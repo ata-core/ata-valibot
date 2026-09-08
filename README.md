@@ -51,9 +51,10 @@ rejected value, and a rejection that might be Infinity-caused is handed to
 valibot for the final word. And `v.record` runs on arrays too, so records stay
 valibot's entirely.
 
-The package is differential-tested against valibot on 10,249 generated values
-across all three modes, including NaN and Infinity corners, and the whole
-suite runs a second time with code generation blocked.
+The package is differential-tested against valibot on 11,788 generated values
+across all three modes, including NaN and Infinity corners and the compiled
+modules the build entry emits, and the whole suite runs a second time with
+code generation blocked.
 
 ## What it costs, measured
 
@@ -82,6 +83,44 @@ With code generation blocked, the way a strict CSP or a locked-down edge
 runtime blocks it: valibot stays at its usual speed, and the bridge falls back
 to ata's interpreted engine at 624 ns for accepts and 187 ns for rejects,
 still ahead on both.
+
+## Ahead of time, for the browser
+
+The runtime bridge above carries a general engine that can validate any schema
+handed to it. In a browser that is the wrong trade, and valibot users of all
+people know why: a bundle is not the place for a compiler.
+
+So compile the schema instead, at build time:
+
+```js
+import { compileToModule } from '@ata-project/valibot/build'
+import { writeFileSync } from 'node:fs'
+
+writeFileSync('validate-product.js', compileToModule(productSchema))
+```
+
+The emitted module imports nothing, not valibot and not ata. It exports
+`isValid(data)` and `validate(data)`. Measured on a four-field product schema,
+esbuild, minified and gzipped:
+
+| what ships | gz |
+|---|---|
+| valibot, tree-shaken for that schema | 1.7 KB |
+| this package's runtime bridge (the engine) | 66.2 KB |
+| **the compiled module** | **1.67 KB** |
+
+Both the compiled module and valibot's 1.7 KB include error reporting, so
+that is a fair pairing: the same size, no runtime dependency at all, and a
+function that was compiled rather than walked.
+
+Only schemas the classifier calls exact can be compiled. Anything valibot
+checks at runtime (transforms, custom checks, formats, native types) throws
+`NotExactError` rather than being quietly compiled without those checks; use
+the runtime bridge for those. `canCompile(schema)` tells you which you have
+before you build.
+
+Emitting a module uses code generation, so run it at build time in Node. What
+it emits is plain code and runs anywhere, a strict CSP included.
 
 ## Raw bytes
 

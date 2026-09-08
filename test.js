@@ -49,6 +49,13 @@ function mutate (value, rng) {
   return c
 }
 
+function hasInfinity (value, depth) {
+  if (typeof value === 'number') return !isFinite(value)
+  if (value === null || typeof value !== 'object' || depth > 32) return false
+  if (Array.isArray(value)) return value.some((x) => hasInfinity(x, depth + 1))
+  return Object.keys(value).some((k) => hasInfinity(value[k], depth + 1))
+}
+
 function lcg (seed) {
   let s = seed >>> 0
   return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296)
@@ -217,6 +224,95 @@ differential('number root', v.number(), [1.5, -3], 'ata')
   ok('rejection is lazy', r.success === false && r._issues === null)
   ok('issues are valibot issues', Array.isArray(r.issues) && r.issues[0].kind === 'validation')
   ok('parse throws ValiError', (() => { try { c.parse({ n: 0 }); return false } catch (e) { return e instanceof v.ValiError } })())
+}
+
+// 9. the ahead-of-time path: a compiled module must answer like valibot too.
+// Emitting a module needs code generation, which is a build-time activity;
+// under a blocked-codegen run there is nothing to emit, and the second pass
+// of this suite exercises that. The emitted module itself is plain code and
+// carries no such requirement.
+if (!require('./build.js').codegenAvailable()) {
+  const { compileToModule } = require('./build.js')
+  const threw = (() => {
+    try { compileToModule(v.object({ n: v.number() })); return false } catch { return true }
+  })()
+  ok('aot: refuses clearly when code generation is blocked', threw)
+} else {
+  const fs = require('fs')
+  const os = require('os')
+  const path = require('path')
+  const { compileToModule, canCompile } = require('./build.js')
+
+  const aotSchemas = {
+    'flat': v.object({
+      id: v.pipe(v.number(), v.integer(), v.minValue(1)),
+      name: v.pipe(v.string(), v.minLength(1), v.maxLength(64)),
+      role: v.picklist(['admin', 'user']),
+      bio: v.optional(v.string()),
+    }),
+    'nested': v.object({
+      title: v.pipe(v.string(), v.minLength(1)),
+      tags: v.array(v.pipe(v.string(), v.minLength(1))),
+      images: v.array(v.object({ url: v.pipe(v.string(), v.minLength(1)) })),
+    }),
+    'variant': v.variant('kind', [
+      v.object({ kind: v.literal('circle'), r: v.pipe(v.number(), v.minValue(0)) }),
+      v.object({ kind: v.literal('rect'), w: v.number(), h: v.number() }),
+    ]),
+    'string root': v.pipe(v.string(), v.minLength(2), v.maxLength(5)),
+  }
+  const seeds = {
+    'flat': [{ id: 1, name: 'ada', role: 'admin' }],
+    'nested': [{ title: 'x', tags: ['a'], images: [{ url: 'u' }] }],
+    'variant': [{ kind: 'circle', r: 2 }, { kind: 'rect', w: 1, h: 2 }],
+    'string root': ['ab', 'abcde'],
+  }
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ata-valibot-aot-'))
+
+  for (const [name, schema] of Object.entries(aotSchemas)) {
+    ok('aot: ' + name + ' is compilable', canCompile(schema).ok === true)
+    const file = path.join(dir, name.replace(/\W/g, '_') + '.cjs')
+    fs.writeFileSync(file, compileToModule(schema, { format: 'cjs' }))
+    const mod = require(file)
+
+    const rng = lcg(0x5eed)
+    const values = [undefined, null, 0, '', 'x', 42, true, [], {}, { unexpected: 1 }]
+    for (const s of seeds[name]) {
+      values.push(s)
+      let val = s
+      for (let i = 0; i < 300; i++) {
+        val = i % 5 === 0 ? mutate(s, rng) : mutate(val, rng)
+        values.push(val)
+      }
+    }
+    for (const value of values) {
+      // Infinity is the one documented divergence: valibot accepts it, JSON
+      // cannot express it, and the compiled module follows JSON. Anything
+      // that arrived as JSON is unaffected, so the corpus skips those.
+      if (JSON.stringify(value) === undefined && value !== undefined) continue
+      if (hasInfinity(value, 0)) continue
+      checked++
+      const want = v.safeParse(schema, value).success
+      if (mod.isValid(value) !== want) {
+        throw new Error('aot ' + name + ': compiled module disagrees with valibot on ' + JSON.stringify(value) + ' (valibot ' + want + ')')
+      }
+      if (mod.validate(value).valid !== want) {
+        throw new Error('aot ' + name + ': compiled validate() disagrees on ' + JSON.stringify(value))
+      }
+    }
+    passed++
+  }
+
+  // a hybrid schema must be refused, not quietly compiled without its checks
+  const hybrid = v.object({ email: v.pipe(v.string(), v.email()) })
+  ok('aot: hybrid is not compilable', canCompile(hybrid).ok === false)
+  ok('aot: hybrid throws NotExactError', (() => {
+    try { compileToModule(hybrid); return false } catch (e) { return e.name === 'NotExactError' }
+  })())
+  const fallback = v.object({ n: v.fallback(v.number(), 0) })
+  ok('aot: fallback is not compilable', canCompile(fallback).ok === false)
+
+  fs.rmSync(dir, { recursive: true, force: true })
 }
 
 console.log('ata-valibot: ' + passed + ' checks, ' + checked + ' differential values, all agreeing with valibot')

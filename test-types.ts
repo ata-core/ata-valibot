@@ -29,3 +29,9 @@ void name; void b; void bb;
 const a = analyze(user);
 const mode: 'ata' | 'hybrid' | 'valibot' = a.mode;
 void mode;
+
+// build entry
+import { compileToModule, canCompile } from './build.js';
+const src: string = compileToModule(user, { format: 'cjs' });
+const can: boolean = canCompile(user).ok;
+void src; void can;

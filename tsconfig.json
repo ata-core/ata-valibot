@@ -9,5 +9,5 @@
     "types": ["node"],
     "lib": ["ES2022"]
   },
-  "include": ["test-types.ts"]
+  "include": ["test-types.ts", "build.d.ts"]
 }

@@ -1,6 +1,6 @@
 {
   "name": "@ata-project/valibot",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Run valibot schemas on the ata engine: same answers, verdicts in nanoseconds",
   "license": "MIT",
   "main": "index.js",
@@ -8,6 +8,8 @@
   "files": [
     "index.js",
     "index.d.ts",
+    "build.js",
+    "build.d.ts",
     "README.md",
     "LICENSE"
   ],
@@ -34,5 +36,16 @@
     "@types/node": "^26.5.0",
     "typescript": "^5.6.0",
     "valibot": "^1.0.0"
+  },
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    },
+    "./build": {
+      "types": "./build.d.ts",
+      "default": "./build.js"
+    },
+    "./package.json": "./package.json"
   }
 }
