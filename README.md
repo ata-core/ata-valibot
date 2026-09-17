@@ -60,14 +60,14 @@ code generation blocked.
 
 One representative API-boundary object schema (nine fields, nested arrays of
 objects, picklist, nullable), interleaved medians of 7 rounds on an M-series
-Mac, Node 25, valibot 1.4.2, ata-validator 1.13.2:
+Mac, Node 25, valibot 1.5.0, ata-validator 1.25.0:
 
 | | valibot `safeParse` | this package |
 |---|---|---|
-| accept, verdict only | 1,051 ns | **20 ns** |
-| reject, verdict only | 1,117 ns | **83 ns** |
-| reject, `safeParse` | 1,117 ns | **84 ns** |
-| accept, `safeParse` | 1,051 ns | 1,062 ns |
+| accept, verdict only | 740 ns | **21 ns** |
+| reject, verdict only | 818 ns | **82 ns** |
+| reject, `safeParse` | 818 ns | **83 ns** |
+| accept, `safeParse` | 740 ns | 763 ns |
 
 The last row is by design, not a gap: an accepted value's output is valibot's
 to make. Plain `v.object` strips unknown keys, defaults fill, transforms
@@ -81,7 +81,7 @@ number constraints they drop to the bare engine verdict.
 
 With code generation blocked, the way a strict CSP or a locked-down edge
 runtime blocks it: valibot stays at its usual speed, and the bridge falls back
-to ata's interpreted engine at 624 ns for accepts and 187 ns for rejects,
+to ata's interpreted engine at 627 ns for accepts and 184 ns for rejects,
 still ahead on both.
 
 ## Ahead of time, for the browser
